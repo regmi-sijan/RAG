@@ -1,0 +1,18 @@
+{
+  "pdf_directory": "data/pdfs",
+  "index_directory": "data/index",
+  "ollama_base_url": "http://localhost:11434",
+  "generation_model": "llama3.2:3b",
+  "embedding_model": "nomic-embed-text",
+  "default_source_scope": "pdf",
+  "chunk_target_tokens": 400,
+  "chunk_overlap_tokens": 60,
+  "retrieval_candidates": 20,
+  "context_chunks": 6,
+  "context_token_budget": 3500,
+  "answer_token_budget": 700,
+  "temperature": 0,
+  "minimum_similarity": 0.35,
+  "allow_automatic_web_search": false,
+  "follow_website_links": false
+}

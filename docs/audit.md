@@ -1,5 +1,18 @@
 # Frontend and backend audit
 
+## Follow-up review, October 28, 2026
+
+The follow-up suite discovered 73 tests: 72 passed and the optional HTTP test was skipped. The HTTP test then passed separately, for 73 distinct passing tests. Dependency validation and Git whitespace checks passed.
+
+Two additional issues were fixed locally:
+
+- Unchanged PDF hashes previously caused ingestion to skip corrupt vectors or missing stored passages. Updates now validate reusable index data and rebuild damaged entries from the original source. Regression tests cover corrupt vectors and missing chunks.
+- A missing/unavailable embedding model previously aborted ingestion without adding an activity record. Model-setup failures now appear in recent runs while preserving existing indexed content.
+
+The Streamlit server was running during this review. The configured Ollama endpoint at port 11435 refused connections, so live model compatibility and real-document RAG could not be rechecked. Start the project model server from Models before using inference. This is a runtime setup condition, not evidence of a model-download failure.
+
+## Original audit
+
 Date: October 28, 2026. Scope: code, GUI, and simulated model tests, as requested. Ollama and model weights were not installed or downloaded.
 
 ## Results
@@ -54,3 +67,9 @@ Live website access and YouTube caption availability were not tested against ext
 Citation IDs are validated, but this does not prove that claims follow from the cited text. The similarity threshold needs calibration using representative questions. Inspect evidence before relying on an answer. The lightweight MiniLM option requires short chunks and may reduce retrieval quality.
 
 The app is a local prototype, without multi-user authentication or deployment hardening. A crashed or hot-reloaded application may leave its project Ollama child process running; an occupied project port is never forcibly replaced. Keep the default loopback binding.
+
+## PDF removal feature verification
+
+The PDF library now supports individual removal, confirmed bulk removal, and individual restoration. Removed files are moved to the Git-ignored data/removed-pdfs/ folder and immediately excluded from retrieval. Filename conflicts never overwrite existing PDFs. Existing indexed content remains as inactive history rather than being permanently erased.
+
+The expanded standard suite discovered 77 tests: 76 passed and the optional localhost HTTP integration test was skipped. Tests cover individual and bulk GUI removal, restoration, nested paths, filename collisions, outside-path rejection, and immediate retrieval exclusion.

@@ -3,6 +3,7 @@ import json
 import os
 import re
 import tempfile
+import uuid
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
@@ -86,3 +87,34 @@ def list_pdfs(directory: Path) -> list[Path]:
     return sorted(p for p in directory.rglob("*")
                   if p.is_file() and not p.is_symlink() and p.suffix.lower() == ".pdf"
                   and p.resolve().is_relative_to(directory.resolve()))
+
+
+def remove_pdf(root: Path, path: Path) -> Path:
+    """Remove from the searchable library while retaining a recoverable copy."""
+    root, path = Path(root).resolve(), Path(path)
+    library = root / "data/pdfs"
+    if path.is_symlink() or not path.is_file() or path.suffix.lower() != ".pdf" or not path.resolve().is_relative_to(library.resolve()):
+        raise ValueError("Choose a PDF inside the project PDF library.")
+    relative = path.resolve().relative_to(library.resolve())
+    destination = root / "data/removed-pdfs" / uuid.uuid4().hex / relative
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    path.rename(destination)
+    return destination
+
+
+def restore_pdf(root: Path, path: Path) -> Path:
+    root, path = Path(root).resolve(), Path(path)
+    trash = root / "data/removed-pdfs"
+    if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(trash.resolve()):
+        raise ValueError("Choose a removed PDF from this project.")
+    parts = path.resolve().relative_to(trash.resolve()).parts
+    if len(parts) < 2 or path.suffix.lower() != ".pdf":
+        raise ValueError("Invalid removed PDF location.")
+    target = root / "data/pdfs" / Path(*parts[1:])
+    if not target.parent.resolve().is_relative_to((root / "data/pdfs").resolve()):
+        raise ValueError("Restore destination must be inside the PDF library.")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    # Exclusive publication protects any newly uploaded file with the same name.
+    os.link(path, target)
+    path.unlink()
+    return target

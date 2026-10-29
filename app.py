@@ -5,7 +5,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from src.rag.workspace import list_pdfs, read_json, save_pdf, validate_url, write_json
+from src.rag.workspace import list_pdfs, read_json, save_pdf, validate_url, write_json, remove_pdf, restore_pdf
 from src.rag.engine import Engine, configured_sources
 from src.rag.models import RagError
 from src.rag.model_ui import render_models
@@ -63,6 +63,9 @@ def main():
             st.markdown((ROOT / "docs/architecture.md").read_text())
 
     elif page == "PDF library":
+        notice = st.session_state.pop("pdf_library_notice", None)
+        if notice:
+            st.success(notice)
         st.caption(f"Files are saved in {PDFS}. Existing files are never overwritten.")
         uploads = st.file_uploader("Add PDFs", type=["pdf"], accept_multiple_files=True)
         if st.button("Save uploaded PDFs", disabled=not uploads, type="primary"):
@@ -79,8 +82,47 @@ def main():
             st.dataframe([{"File": str(p.relative_to(PDFS)), "Size (KB)": round(p.stat().st_size / 1024, 1), "Status": statuses.get(str(p.relative_to(ROOT)), "Not indexed")} for p in pdfs], width="stretch", hide_index=True)
             selected = st.selectbox("Download a source", pdfs, format_func=lambda p: str(p.relative_to(PDFS)))
             st.download_button("Download PDF", selected.read_bytes(), file_name=selected.name, mime="application/pdf")
+            st.subheader("Remove PDFs")
+            st.caption("Removal excludes PDFs from answers immediately and moves their files to data/removed-pdfs/. You can restore them below. Model downloads are unaffected.")
+            removal = st.selectbox("PDF to remove", pdfs, format_func=lambda p: str(p.relative_to(PDFS)))
+            if st.button("Remove selected PDF"):
+                try:
+                    remove_pdf(ROOT, removal)
+                    engine.store.synchronize([s["id"] for s in configured_sources(ROOT, sources)])
+                    st.session_state["pdf_library_notice"] = f"Removed {removal.relative_to(PDFS)}. Its file can be restored below."
+                    st.rerun()
+                except (OSError, ValueError) as error:
+                    st.error(str(error))
+            confirm_all = st.checkbox("I want to remove every PDF in this library", key="confirm_remove_all_pdfs")
+            if st.button("Remove all PDFs", disabled=not confirm_all):
+                removed, errors = 0, []
+                for path in pdfs:
+                    try:
+                        remove_pdf(ROOT, path)
+                        removed += 1
+                    except (OSError, ValueError) as error:
+                        errors.append(f"{path.name}: {error}")
+                engine.store.synchronize([s["id"] for s in configured_sources(ROOT, sources)])
+                st.session_state["pdf_library_notice"] = f"Removed {removed} PDF(s). Their files can be restored below."
+                st.session_state["pdf_removal_errors"] = errors
+                del st.session_state["confirm_remove_all_pdfs"]
+                st.rerun()
         else:
             st.info("No PDFs yet. Upload files above or copy them into data/pdfs/.")
+        for error in st.session_state.pop("pdf_removal_errors", []):
+            st.error(error)
+        removed_pdfs = list_pdfs(ROOT / "data/removed-pdfs")
+        if removed_pdfs:
+            with st.expander(f"Restore removed PDFs ({len(removed_pdfs)})"):
+                archived = st.selectbox("Removed PDF", removed_pdfs,
+                    format_func=lambda p: str(Path(*p.relative_to(ROOT / "data/removed-pdfs").parts[1:])) + f" ({p.relative_to(ROOT / 'data/removed-pdfs').parts[0][:8]})")
+                if st.button("Restore selected PDF"):
+                    try:
+                        restored = restore_pdf(ROOT, archived)
+                        st.session_state["pdf_library_notice"] = f"Restored {restored.relative_to(PDFS)}. Build / update the index before asking questions."
+                        st.rerun()
+                    except (OSError, ValueError) as error:
+                        st.error(f"Could not restore PDF: {error}. An existing filename is never overwritten.")
 
     elif page == "Web & YouTube":
         st.write("Save individual page or video links. Saving a link does not fetch or index it.")

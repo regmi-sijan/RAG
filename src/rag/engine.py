@@ -95,6 +95,19 @@ class Engine:
         self.store = Store(directory)
         self.client = client or Ollama(self.settings)
 
+    def _reusable(self, source, old, content_hash, processing, identity):
+        if not (old and content_hash and old["content_hash"] == content_hash
+                and old["fingerprint"] == processing and not old["error"]):
+            return False
+        try:
+            # A matching PDF hash does not establish that its stored index is intact.
+            warnings = json.loads(old["warnings"])
+            if not isinstance(warnings, list):
+                return False
+            return bool(self.store.passages({source["id"]}, identity))
+        except (ValueError, TypeError, RagError):
+            return False
+
     def ingest(self, manifest, include_external=False, progress=None):
         sources = configured_sources(self.root, manifest)
         self.store.synchronize([source["id"] for source in sources])
@@ -103,7 +116,11 @@ class Engine:
         if not selected:
             self.store.log_run(results)
             return results
-        identity = self.client.identity(self.settings["embedding_model"])
+        try:
+            identity = self.client.identity(self.settings["embedding_model"])
+        except RagError as error:
+            self.store.log_run([{"source": "Model setup", "status": "failed", "error": str(error)}])
+            raise
         processing = fingerprint(self.settings, identity, manifest)
         for number, source in enumerate(selected, 1):
             if progress:
@@ -112,12 +129,12 @@ class Engine:
                 old = self.store.source(source["id"])
                 # Hash PDFs before expensive extraction. Remote sources are fetched on every explicit update.
                 content_hash = digest(source["path"].read_bytes()) if source["kind"] == "pdf" else None
-                if old and content_hash and old["content_hash"] == content_hash and old["fingerprint"] == processing and not old["error"]:
+                if self._reusable(source, old, content_hash, processing, identity):
                     results.append({"source": source["locator"], "status": "unchanged", "warnings": json.loads(old["warnings"])})
                     continue
                 units, warnings = extract(source, manifest)
                 content_hash = content_hash or digest(json.dumps(units, sort_keys=True, ensure_ascii=False).encode())
-                if old and old["content_hash"] == content_hash and old["fingerprint"] == processing and not old["error"]:
+                if self._reusable(source, old, content_hash, processing, identity):
                     results.append({"source": source["locator"], "status": "unchanged", "warnings": warnings})
                     continue
                 target = min(self.settings["chunk_target_tokens"], embedding_byte_budget(self.settings["embedding_model"]) or self.settings["chunk_target_tokens"])

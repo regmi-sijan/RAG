@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 from src.rag.engine import Engine, configured_sources
 from src.rag.extraction import PublicHTTPS, extract_website, fetch_page
 from src.rag.models import Ollama, RagError
-from src.rag.workspace import read_json, save_pdf, validate_url
+from src.rag.workspace import read_json, save_pdf, validate_url, remove_pdf
 from test_rag import FakeModels, make_pdf
 
 
@@ -65,6 +65,13 @@ class InputAndExtractionRegressions(unittest.TestCase):
 
 
 class RetrievalRegressions(unittest.TestCase):
+    def test_removed_pdf_cannot_contribute_without_reindexing(self):
+        remove_pdf(self.root, self.root / "data/pdfs/policy.pdf")
+        result = self.engine.ask("Annual leave?", self.manifest)
+        self.assertEqual(result["status"], "insufficient_evidence")
+        self.assertEqual(result["evidence"], [])
+        self.assertEqual(self.client.generate_calls, 0)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -102,6 +109,27 @@ class RetrievalRegressions(unittest.TestCase):
         with self.assertRaisesRegex(RagError, "Rebuild"):
             self.engine.ask("Annual leave?", self.manifest)
         self.assertEqual(self.client.generate_calls, 0)
+
+    def test_update_repairs_corrupt_vectors_without_changing_pdf(self):
+        with self.engine.store.connection() as db:
+            db.execute("UPDATE chunks SET vector=?", ("[NaN, 1]",))
+        result = self.engine.ingest(self.manifest)
+        self.assertEqual(result[0]["status"], "indexed")
+        self.assertTrue(self.engine.retrieve("Annual leave?", self.manifest)[0])
+
+    def test_update_restores_missing_chunks_without_changing_pdf(self):
+        with self.engine.store.connection() as db:
+            db.execute("DELETE FROM chunks")
+        self.assertEqual(self.engine.ingest(self.manifest)[0]["status"], "indexed")
+        self.assertTrue(self.engine.retrieve("Annual leave?", self.manifest)[0])
+
+    def test_model_setup_failure_is_recorded_in_activity(self):
+        with patch.object(self.client, "identity", side_effect=RagError("Model is unavailable")):
+            with self.assertRaises(RagError):
+                self.engine.ingest(self.manifest)
+        latest = json.loads(self.engine.store.recent_runs()[0]["results"])
+        self.assertEqual(latest[0]["status"], "failed")
+        self.assertIn("Model is unavailable", latest[0]["error"])
 
     def test_question_type_is_validated(self):
         with self.assertRaisesRegex(RagError, "text"):

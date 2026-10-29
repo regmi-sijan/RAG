@@ -115,7 +115,7 @@ If you installed an earlier version of this GUI, rerun `python -m pip install -r
 | View | Available actions |
 |---|---|
 | Overview | File/URL counts, backend status, and architecture documentation |
-| PDF library | Upload multiple PDFs, list files, download a saved PDF |
+| PDF library | Upload/download PDFs, remove one or all, restore removed files |
 | Web & YouTube | Save HTTPS page/video links and remove saved links |
 | Models | Compare sizes/RAM estimates, download, choose models, manage shared storage, inspect loaded memory |
 | Ask | Choose source scope, ask independent questions, inspect citations or retrieve evidence only |
@@ -126,7 +126,9 @@ If you installed an earlier version of this GUI, rerun `python -m pip install -r
 
 Upload through **PDF library**, or copy files into `data/pdfs/`. Nested PDF folders are included. Refresh the page after external folder changes.
 
-Uploads are limited to **50 MB per file**. Filenames must end in `.pdf`, and content must start with a PDF header. This is an initial check, not full PDF validation. Existing files are never overwritten: rename an incoming file if its name conflicts. PDF deletion is currently done manually in the folder.
+Uploads are limited to **50 MB per file**. Filenames must end in `.pdf`, and content must start with a PDF header. This is an initial check, not full PDF validation. Existing files are never overwritten: rename an incoming file if its name conflicts.
+
+In **PDF library**, choose **PDF to remove** and click **Remove selected PDF**, or tick the confirmation checkbox and click **Remove all PDFs**. Removal immediately excludes files from answers and moves them to `data/removed-pdfs/`, which is ignored by Git. The **Restore removed PDFs** expander restores individual files to their original relative locations without overwriting existing files. Build/update the index after restoration. Removal preserves old index records as inactive history; it is not permanent data erasure. Model downloads and saved web links are unaffected. This feature supersedes the older PDF guide's instruction to remove PDFs manually.
 
 Uploading does not index a file. Open **Index & activity** and build the index afterward. Textless pages produce warnings and a completely textless PDF fails visibly. OCR, image interpretation, and layout-aware table processing are not implemented.
 
@@ -151,6 +153,7 @@ Use **Models** for downloads and model selection. Use **Settings** for manual ge
 | `config/sources.json` | Personal links created when changed | No |
 | `data/pdfs/` | Your documents | Only the empty `.gitkeep` placeholder |
 | `data/index/` | SQLite source metadata, extracted passages, embeddings, and ingestion history | No |
+| `data/removed-pdfs/` | Recoverable copies of PDFs removed through the GUI | No |
 | `data/models/` | Shared project model weights when using the managed project server | No |
 | `data/model-server/` | Project Ollama server logs | No |
 | `.venv/` | Installed Python environment | No |

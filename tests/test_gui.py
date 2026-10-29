@@ -55,6 +55,26 @@ class GuiTests(unittest.TestCase):
 
 
 class ModelLibraryGuiTests(unittest.TestCase):
+    def test_remove_individual_all_and_restore_pdf(self):
+        library = self.root / "data/pdfs"
+        library.mkdir(parents=True)
+        make_pdf(library / "one.pdf", "First policy")
+        make_pdf(library / "two.pdf", "Second policy")
+        app = AppTest.from_string(self.source).run()
+        app.sidebar.radio[0].set_value("PDF library").run()
+        self.assertTrue(next(b for b in app.button if b.label == "Remove all PDFs").disabled)
+        next(b for b in app.button if b.label == "Remove selected PDF").click().run()
+        self.assertFalse(app.exception, app.exception)
+        self.assertEqual(len(list(library.glob("*.pdf"))), 1)
+        next(b for b in app.button if b.label == "Restore selected PDF").click().run()
+        self.assertFalse(app.exception, app.exception)
+        self.assertEqual(len(list(library.glob("*.pdf"))), 2)
+        app.checkbox(key="confirm_remove_all_pdfs").check().run()
+        next(b for b in app.button if b.label == "Remove all PDFs").click().run()
+        self.assertFalse(app.exception, app.exception)
+        self.assertEqual(len(list(library.glob("*.pdf"))), 0)
+        self.assertEqual(len(list((self.root / "data/removed-pdfs").rglob("*.pdf"))), 2)
+
     def test_duplicate_saved_urls_render_once_and_remove_together(self):
         path = self.root / "config/sources.json"
         path.write_text(json.dumps({"websites": ["https://example.com/page"] * 2, "youtube": []}))
